@@ -1,35 +1,27 @@
 import os
-import google.generativeai as genai
 from dotenv import load_dotenv
+import google.generativeai as genai
 
-# Load environment variables
+from agents.resume_agent import ResumeBuilderSession
+from agents.timetable_agent import generate_timetable
+
 load_dotenv()
 
-# Configure Gemini
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+API_KEY = os.getenv("GEMINI_API_KEY")
+
+if not API_KEY:
+    raise ValueError("GEMINI_API_KEY not found in .env")
+
+genai.configure(api_key=API_KEY)
 
 model = genai.GenerativeModel("gemini-2.5-flash")
 
 
 # ----------------------------
-# Placeholder Agent Functions
-# Replace these with imports later
+# Resume Session
 # ----------------------------
 
-def syllabus_agent(query):
-    return f"📚 Syllabus Agent\n\nReceived: {query}"
-
-
-def assignment_agent(query):
-    return f"📝 Assignment Agent\n\nReceived: {query}"
-
-
-def timetable_agent(query):
-    return f"📅 Timetable Agent\n\nReceived: {query}"
-
-
-def resume_agent(query):
-    return f"📄 Resume Agent\n\nReceived: {query}"
+resume_session = ResumeBuilderSession()
 
 
 # ----------------------------
@@ -39,9 +31,9 @@ def resume_agent(query):
 def classify_query(query: str):
 
     prompt = f"""
-You are an AI Supervisor for CampusOS.
+You are the AI Supervisor of CampusOS.
 
-Determine which ONE agent should answer the user's query.
+Determine which ONE agent should handle the user's request.
 
 Available agents:
 
@@ -52,32 +44,31 @@ Available agents:
 - unit
 - module
 - pdf
-- explain topic
 - study material
 
 2. assignment
 - assignment
 - homework
-- summarize assignment
+- solve assignment
 - explain assignment
-- checklist
 
 3. timetable
 - timetable
 - schedule
+- routine
+- weekly plan
 - study plan
-- weekly routine
-- daily routine
 
 4. resume
 - resume
 - cv
 - ats
-- skills
+- placement
 - projects
-- career
+- skills
+- interview
 
-Return ONLY ONE WORD.
+Return ONLY one word.
 
 Possible outputs:
 
@@ -87,8 +78,8 @@ timetable
 resume
 
 User Query:
-{query}
-"""
+
+""" + query
 
     response = model.generate_content(prompt)
 
@@ -103,22 +94,33 @@ def supervisor(query: str):
 
     agent = classify_query(query)
 
-    print(f"\nSelected Agent: {agent}")
+    print(f"\nSelected Agent : {agent}")
 
-    if agent == "syllabus":
-        return syllabus_agent(query)
+    if agent == "resume":
 
-    elif agent == "assignment":
-        return assignment_agent(query)
+        return resume_session.get_next_question(query)
 
     elif agent == "timetable":
-        return timetable_agent(query)
 
-    elif agent == "resume":
-        return resume_agent(query)
+        return generate_timetable(query)
 
-    else:
-        return "Sorry, I couldn't determine which agent should answer your request."
+    elif agent == "assignment":
+
+        return (
+            "📄 Assignment Agent\n\n"
+            "Please upload your assignment PDF or image "
+            "using the Assignment module."
+        )
+
+    elif agent == "syllabus":
+
+        return (
+            "📚 Syllabus Agent\n\n"
+            "Please upload your syllabus PDF "
+            "using the Syllabus module."
+        )
+
+    return "Sorry, I couldn't understand your request."
 
 
 # ----------------------------
@@ -127,13 +129,17 @@ def supervisor(query: str):
 
 if __name__ == "__main__":
 
+    print("\n===== CampusOS Supervisor =====\n")
+
     while True:
 
-        user_query = input("\nAsk CampusOS: ")
+        query = input("You : ")
 
-        if user_query.lower() == "exit":
+        if query.lower() == "exit":
             break
 
-        result = supervisor(user_query)
+        answer = supervisor(query)
 
-        print("\n" + result)
+        print("\nCampusOS:\n")
+
+        print(answer)

@@ -1,79 +1,137 @@
 import os
 import json
-from typing import List
+from dotenv import load_dotenv
 import google.generativeai as genai
-from pydantic import BaseModel, Field
 
-# 1. Configuration & API Key Setup
-GOOGLE_API_KEY = "your-gemini-api-key-here"
-genai.configure(api_key=GOOGLE_API_KEY)
+# ----------------------------
+# Load Environment Variables
+# ----------------------------
 
-# 2. Define the exact database/UI schema using Pydantic
-class TimeSlot(BaseModel):
-    time: str = Field(description="The time interval, e.g., '09:00 AM - 10:00 AM'")
-    subject: str = Field(description="Name of the subject allocated, or 'Break / Free Period'")
-    room: str = Field(description="Assigned classroom or lab space, if applicable")
+load_dotenv()
 
-class DaySchedule(BaseModel):
-    day: str = Field(description="Day of the week, e.g., 'Monday'")
-    slots: List[TimeSlot]
+API_KEY = os.getenv("GEMINI_API_KEY")
 
-class CompleteTimetable(BaseModel):
-    timetable: List[DaySchedule]
-    notes: str = Field(description="Any specific conflict resolutions or scheduling logic applied by the AI")
+if not API_KEY:
+    raise ValueError("GEMINI_API_KEY not found in .env")
 
-def generate_campus_timetable(input_constraints: str) -> str:
-    """
-    Leverages Gemini's structured JSON output to create a collision-free 
-    timetable based on input data text constraints.
-    """
-    # Initialize the model
-    model = genai.GenerativeModel(model_name="gemini-2.5-flash")
+genai.configure(api_key=API_KEY)
 
-    system_prompt = """
-    You are an expert University Academic Registrar and scheduling algorithm. 
-    Your job is to generate a comprehensive, conflict-free weekly class timetable (Monday to Friday) 
-    based on the subjects, credit hours, and time parameters provided by the user.
+model = genai.GenerativeModel("gemini-2.5-flash")
 
-    Scheduling Rules:
-    1. Distribute the required hours evenly across the week.
-    2. Do not exceed the total available hours per day.
-    3. Ensure logical placement for lunch breaks or recess periods if appropriate.
-    4. If the constraints are impossible to fulfill perfectly, approximate the best solution and explain why in the notes field.
-    """
 
-    # Call the model forcing a JSON response that fits our Pydantic classes exactly
-    response = model.generate_content(
-        f"{system_prompt}\n\nUser Constraints:\n{input_constraints}",
-        generation_config={"response_mime_type": "application/json", "response_schema": CompleteTimetable}
-    )
+# ----------------------------
+# Timetable Generator
+# ----------------------------
 
-    return response.text
+def generate_timetable(user_input: str):
 
-# --- 🎯 Execution Example ---
+    prompt = f"""
+You are CampusOS AI Timetable Generator.
+
+Create a professional weekly timetable.
+
+Instructions:
+
+• Generate timetable from Monday to Friday.
+
+• Distribute subjects evenly.
+
+• Avoid scheduling conflicts.
+
+• Add lunch break if appropriate.
+
+• Return ONLY valid JSON.
+
+JSON format:
+
+{{
+  "Monday":[
+      {{
+        "time":"",
+        "subject":"",
+        "room":""
+      }}
+  ],
+
+  "Tuesday":[],
+
+  "Wednesday":[],
+
+  "Thursday":[],
+
+  "Friday":[]
+
+}}
+
+User Requirements:
+
+{user_input}
+
+"""
+
+    try:
+
+        response = model.generate_content(prompt)
+
+        return response.text
+
+    except Exception as e:
+
+        return f"Error : {e}"
+
+
+# ----------------------------
+# Pretty JSON
+# ----------------------------
+
+def pretty_print(result):
+
+    try:
+
+        parsed = json.loads(result)
+
+        return json.dumps(parsed, indent=4)
+
+    except:
+
+        return result
+
+
+# ----------------------------
+# Save JSON
+# ----------------------------
+
+def save_json(result, filename="generated_timetable.json"):
+
+    try:
+
+        with open(filename, "w", encoding="utf-8") as file:
+
+            file.write(pretty_print(result))
+
+        print(f"\n✅ Saved as {filename}")
+
+    except Exception as e:
+
+        print(e)
+
+
+# ----------------------------
+# Test
+# ----------------------------
+
 if __name__ == "__main__":
-    # Simulated input a student or department head might type or upload
-    raw_user_input = """
-    Subjects to schedule:
-    - Advanced Machine Learning: 4 hours required per week.
-    - Distributed Systems: 3 hours required per week.
-    - Cloud Computing Lab: 2 hours required per week (must be a single contiguous 2-hour block).
-    - Technical Communication: 2 hours required per week.
 
-    Daily Availability:
-    - Monday through Friday.
-    - Classes can only run between 09:00 AM and 01:00 PM.
-    - Include a 30-minute recess or free slot every day around 11:00 AM if possible.
-    """
+    print("\n===== CampusOS Timetable Generator =====\n")
 
-    print("🔄 Generating optimized timetable grid...")
-    json_timetable_output = generate_campus_timetable(raw_user_input)
-    
-    # Pretty print the resulting JSON
-    parsed_json = json.loads(json_timetable_output)
-    print(json.dumps(parsed_json, indent=2))
-    
-    # Save it out as a file that can be read by a web frontend interface
-    with open("generated_timetable.json", "w") as f:
-        f.write(json_timetable_output)
-    print("\n✅ Timetable JSON exported successfully to 'generated_timetable.json'")
+    user_constraints = input("Enter timetable requirements:\n\n")
+
+    print("\nGenerating timetable...\n")
+
+    timetable = generate_timetable(user_constraints)
+
+    formatted = pretty_print(timetable)
+
+    print(formatted)
+
+    save_json(timetable)
